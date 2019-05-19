@@ -7,18 +7,19 @@ use Getopt::Long;
 use Data::Dumper;
 use File::Find;
 use File::Spec;
+use Time::HiRes qw(gettimeofday tv_interval);
 
 # Options
 my $_verbose;
 my $_help;
 my $_size;
 my $_hash;
-my $_dots = 50;
+my $_checking;
 GetOptions(
     "verbose" => \$_verbose,
     "help" => \$_help,
     "size" => \$_size,
-    "dots=i" => \$_dots,
+    "checking" => \$_checking,
 ) or die "Error in command line arguments\n";
 
 # Help
@@ -30,6 +31,7 @@ if ($_help) {
     print "  --help                print this help\n";
     print "  --verbose             verbose output\n";
     print "  --size                compare files by size\n";
+    print "  --checking            list files being checked\n";
     print "\n";
     print "Example:\n";
     print "  \$ $0 -s tmpdir1/ snapshots/hourly.0/\n";
@@ -60,6 +62,9 @@ if (! -d $dir2) {
 my $dir1_name = File::Spec->catdir($dir1);
 my $dir2_name = File::Spec->catdir($dir2);
 
+# Set timer
+my $t0 = [gettimeofday];
+
 # File maps and scan routine
 my ($map1, $map2, $diff_list) = ({}, {}, []);
 my $scanner = sub {
@@ -71,7 +76,7 @@ my $scanner = sub {
     # Skip search directory
     if (File::Spec->catdir($file) eq $dir) {
         if ($_verbose) {
-            warn "Scanning directory: $file\n";
+            print "Scanning directory: $file\n";
         }
         return;
     }
@@ -94,7 +99,7 @@ my $scanner = sub {
     $map->{$file} = \@stat;
     my @other_stat = exists($other_map->{$file}) ?
         @{$other_map->{$file}} : stat($other_path);
-    if ($_verbose) {
+    if ($_checking) {
         warn "Checking file $file: $path / $other_path\n";
     }
 
@@ -122,4 +127,11 @@ my $scanner = sub {
 # Scan directories
 find({ wanted => sub { $scanner->(1, $_); }, no_chdir => 1}, $dir1);
 find({ wanted => sub { $scanner->(2, $_); }, no_chdir => 1}, $dir2);
+
+# Check time
+my $elapsed = tv_interval($t0);
+if ($_verbose) {
+    my $count = (keys %$map1) + (keys %$map2);
+    print "Scanned $count files in $elapsed sec\n";
+}
 
